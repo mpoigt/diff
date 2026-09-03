@@ -1,0 +1,101 @@
+### Файл для расширения REST Client (VS Code).
+### Открыть файл и нажимать "Send Request" над каждым блоком.
+
+@host = http://localhost:3000
+
+### 1. Проверка работоспособности сервера -> 200
+GET {{host}}/health
+
+### 2. Описание API -> 200
+GET {{host}}/api
+
+### 3. Получить все сравнения -> 200
+GET {{host}}/api/diffs
+
+### 4. Список с фильтром и пагинацией -> 200
+GET {{host}}/api/diffs?search=config&limit=1&offset=0
+
+### 5. Получить одно сравнение по ID -> 200
+GET {{host}}/api/diffs/1
+
+### 6. Несуществующий ID -> 404
+GET {{host}}/api/diffs/999
+
+### 7. Создать новое сравнение -> 201 + заголовок Location
+POST {{host}}/api/diffs
+Content-Type: application/json
+
+{
+  "title": "server.js: рефакторинг маршрутов",
+  "author": "student",
+  "fileA": {
+    "name": "server.old.js",
+    "content": "const express = require('express');\nconst app = express();\napp.get('/', h);\napp.listen(3000);"
+  },
+  "fileB": {
+    "name": "server.new.js",
+    "content": "const express = require('express');\nconst app = express();\napp.use(express.json());\napp.use('/api/diffs', router);\napp.listen(3000);"
+  }
+}
+
+### 8. Создание с некорректными данными -> 400
+POST {{host}}/api/diffs
+Content-Type: application/json
+
+{
+  "title": "",
+  "fileA": { "name": "a.txt" }
+}
+
+### 9. Битый JSON -> 400 (обрабатывается express.json + глобальный обработчик)
+POST {{host}}/api/diffs
+Content-Type: application/json
+
+{ "title": "broken",
+
+### 10. Полное обновление (PUT) -> 200
+PUT {{host}}/api/diffs/1
+Content-Type: application/json
+
+{
+  "title": "README: правки перед релизом (обновлено)",
+  "author": "student",
+  "fileA": { "name": "README.old.md", "content": "# Diff Service\nВерсия 0.9" },
+  "fileB": { "name": "README.new.md", "content": "# Diff Service\nВерсия 1.0\nЛицензия: ISC" }
+}
+
+### 11. PUT по несуществующему ID -> 404
+PUT {{host}}/api/diffs/999
+Content-Type: application/json
+
+{
+  "title": "нет такого",
+  "fileA": { "name": "a.txt", "content": "a" },
+  "fileB": { "name": "b.txt", "content": "b" }
+}
+
+### 12. Частичное обновление (PATCH) -> 200
+PATCH {{host}}/api/diffs/2
+Content-Type: application/json
+
+{
+  "title": "config.json: смена порта на 8080"
+}
+
+### 13. PATCH с пустым телом -> 400
+PATCH {{host}}/api/diffs/2
+Content-Type: application/json
+
+{}
+
+### 14. Unified-представление патча -> 200, text/plain
+GET {{host}}/api/diffs/2/patch
+
+### 15. Удаление -> 204 (без тела)
+DELETE {{host}}/api/diffs/2
+
+### 16. Повторное удаление того же ресурса -> 404
+DELETE {{host}}/api/diffs/2
+
+### 17. Несуществующий маршрут -> 404
+GET {{host}}/api/unknown

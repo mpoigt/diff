@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Diff Service — визуализация изменений</title>
+  <style>
+    :root {
+      --bg: #f5f6f8;
+      --panel: #ffffff;
+      --border: #d8dce3;
+      --text: #1f2328;
+      --muted: #656d76;
+      --add-bg: #e6ffec;
+      --add-mark: #1a7f37;
+      --del-bg: #ffebe9;
+      --del-mark: #cf222e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 24px;
+      font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg); color: var(--text);
+    }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    p.sub { margin: 0 0 20px; color: var(--muted); font-size: 14px; }
+    .layout { display: grid; grid-template-columns: 320px 1fr; gap: 20px; align-items: start; }
+    .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+    .panel h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 12px; }
+    ul#list { list-style: none; margin: 0; padding: 0; }
+    ul#list li { padding: 10px; border-radius: 6px; cursor: pointer; border: 1px solid transparent; }
+    ul#list li:hover { background: #f0f2f5; }
+    ul#list li.active { background: #ddf4ff; border-color: #54aeff; }
+    ul#list .title { font-weight: 600; font-size: 14px; }
+    ul#list .meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .badges span { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 12px; margin-right: 6px; }
+    .b-add { background: var(--add-bg); color: var(--add-mark); }
+    .b-del { background: var(--del-bg); color: var(--del-mark); }
+    .b-eq  { background: #eef1f4; color: var(--muted); }
+    table.diff { width: 100%; border-collapse: collapse; font-family: Consolas, "Courier New", monospace; font-size: 13px; margin-top: 12px; }
+    table.diff td { padding: 1px 8px; white-space: pre-wrap; word-break: break-word; vertical-align: top; }
+    td.num { width: 44px; text-align: right; color: var(--muted); user-select: none; background: #fafbfc; border-right: 1px solid var(--border); }
+    td.mark { width: 18px; text-align: center; user-select: none; }
+    tr.added td { background: var(--add-bg); }
+    tr.added td.mark { color: var(--add-mark); }
+    tr.removed td { background: var(--del-bg); }
+    tr.removed td.mark { color: var(--del-mark); }
+    .files { font-size: 13px; color: var(--muted); margin-top: 8px; }
+    form label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+    form input, form textarea { width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; font-family: inherit; }
+    form textarea { font-family: Consolas, monospace; min-height: 70px; resize: vertical; }
+    button { margin-top: 12px; padding: 8px 14px; border: 0; border-radius: 6px; background: #1f6feb; color: #fff; font-size: 13px; cursor: pointer; }
+    button.danger { background: #cf222e; }
+    button:hover { opacity: .9; }
+    .row { display: flex; gap: 8px; align-items: center; }
+    .err { color: var(--del-mark); font-size: 13px; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <h1>Diff Service</h1>
+  <p class="sub">Клиент-демонстрация REST API: <code>/api/diffs</code></p>
+
+  <div class="layout">
+    <div>
+      <div class="panel">
+        <h2>История сравнений</h2>
+        <ul id="list"></ul>
+      </div>
+
+      <div class="panel" style="margin-top:20px">
+        <h2>Новое сравнение (POST)</h2>
+        <form id="create-form">
+          <label>Название</label>
+          <input name="title" required placeholder="Например: index.js до и после">
+          <label>Имя файла A</label>
+          <input name="nameA" required value="a.txt">
+          <label>Содержимое A</label>
+          <textarea name="contentA">строка 1&#10;строка 2&#10;строка 3</textarea>
+          <label>Имя файла B</label>
+          <input name="nameB" required value="b.txt">
+          <label>Содержимое B</label>
+          <textarea name="contentB">строка 1&#10;строка 2 изменена&#10;строка 3&#10;строка 4</textarea>
+          <button type="submit">Сравнить</button>
+          <div class="err" id="form-error"></div>
+        </form>
+      </div>
+    </div>
+
+    <div class="panel" id="viewer">
+      <h2>Результат сравнения</h2>
+      <p class="sub">Выберите сравнение слева.</p>
+    </div>
+  </div>
+
+<script>
+const API = '/api/diffs';
+let activeId = null;
+
+async function request(url, options) {
+  const res = await fetch(url, options);
+  if (res.status === 204) return null;
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.details ? data.details.join('; ') : data.error);
+  return data;
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+}
+
+async function loadList() {
+  const data = await request(API);
+  const list = document.getElementById('list');
+  list.innerHTML = data.items.map((d) => `
+    <li data-id="${d.id}" class="${d.id === activeId ? 'active' : ''}">
+      <div class="title">${escapeHtml(d.title)}</div>
+      <div class="meta">#${d.id} · ${escapeHtml(d.fileA.name)} → ${escapeHtml(d.fileB.name)}</div>
+      <div class="meta badges" style="margin-top:6px">
+        <span class="b-add">+${d.stats.added}</span>
+        <span class="b-del">−${d.stats.removed}</span>
+        <span class="b-eq">${d.stats.similarity}% совпадение</span>
+      </div>
+    </li>`).join('') || '<li class="meta">Пока пусто</li>';
+
+  list.querySelectorAll('li[data-id]').forEach((li) => {
+    li.onclick = () => showDiff(li.dataset.id);
+  });
+}
+
+async function showDiff(id) {
+  activeId = id;
+  const d = await request(`${API}/${id}`);
+  const rows = d.changes.map((c) => {
+    const mark = c.type === 'added' ? '+' : c.type === 'removed' ? '−' : '';
+    return `<tr class="${c.type}">
+      <td class="num">${c.oldLine ?? ''}</td>
+      <td class="num">${c.newLine ?? ''}</td>
+      <td class="mark">${mark}</td>
+      <td>${escapeHtml(c.content)}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('viewer').innerHTML = `
+    <h2>${escapeHtml(d.title)}</h2>
+    <div class="badges">
+      <span class="b-add">добавлено ${d.stats.added}</span>
+      <span class="b-del">удалено ${d.stats.removed}</span>
+      <span class="b-eq">без изменений ${d.stats.unchanged}</span>
+      <span class="b-eq">схожесть ${d.stats.similarity}%</span>
+    </div>
+    <div class="files">${escapeHtml(d.fileA.name)} → ${escapeHtml(d.fileB.name)} · создано ${new Date(d.createdAt).toLocaleString('ru-RU')}</div>
+    <table class="diff">${rows}</table>
+    <div class="row">
+      <button class="danger" id="delete-btn">Удалить (DELETE)</button>
+      <button id="patch-btn" style="background:#57606a">Показать unified-патч</button>
+    </div>
+    <pre id="patch-out" style="display:none;background:#f6f8fa;padding:12px;border-radius:6px;overflow:auto"></pre>`;
+
+  document.getElementById('delete-btn').onclick = async () => {
+    await request(`${API}/${id}`, { method: 'DELETE' });
+    activeId = null;
+    document.getElementById('viewer').innerHTML = '<h2>Результат сравнения</h2><p class="sub">Запись удалена.</p>';
+    loadList();
+  };
+
+  document.getElementById('patch-btn').onclick = async () => {
+    const text = await fetch(`${API}/${id}/patch`).then((r) => r.text());
+    const out = document.getElementById('patch-out');
+    out.textContent = text;
+    out.style.display = 'block';
+  };
+
+  loadList();
+}
+
+document.getElementById('create-form').onsubmit = async (e) => {
+  e.preventDefault();
+  const f = e.target.elements; // form.elements, чтобы поле "title" не конфликтовало со свойством HTMLElement.title
+  const errBox = document.getElementById('form-error');
+  errBox.textContent = '';
+  try {
+    const created = await request(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: f.title.value,
+        fileA: { name: f.nameA.value, content: f.contentA.value },
+        fileB: { name: f.nameB.value, content: f.contentB.value },
+      }),
+    });
+    await showDiff(created.id);
+  } catch (err) {
+    errBox.textContent = err.message;
+  }
+};
+
+loadList();
+</script>
+</body>
+</html>
