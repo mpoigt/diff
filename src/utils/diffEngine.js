@@ -1,21 +1,12 @@
 'use strict';
 
-/**
- * Построчный diff двух текстов на основе алгоритма LCS
- * (наибольшая общая подпоследовательность).
- *
- * Результат — плоский список операций, который клиент может отрисовать
- * как side-by-side или unified представление.
- */
+
 
 function splitLines(text) {
   if (text === '') return [];
   return text.replace(/\r\n/g, '\n').split('\n');
 }
 
-/**
- * Матрица длин LCS. lcs[i][j] — длина LCS для a[i..] и b[j..].
- */
 function buildLcsMatrix(a, b) {
   const lcs = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0));
 

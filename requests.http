@@ -1,101 +1,438 @@
-### Файл для расширения REST Client (VS Code).
-### Открыть файл и нажимать "Send Request" над каждым блоком.
+### Diff Service API — запросы для расширения REST Client (VS Code)
+### Альтернатива Postman: откройте файл и нажимайте «Send Request» над запросом.
+### Коллекция Postman с тестами: docs/DiffServiceAPI.postman_collection.json
 
 @host = http://localhost:3000
+@adminEmail = admin@diffservice.local
+@adminPassword = Admin#2024pass
+@userEmail = student@example.com
+@userPassword = Str0ng#Pass1
 
-### 1. Проверка работоспособности сервера -> 200
+# ============================================================================
+# 1. СЛУЖЕБНОЕ
+# ============================================================================
+
+### Проверка, что сервер жив (+ посмотрите заголовки безопасности в ответе)
 GET {{host}}/health
 
-### 2. Описание API -> 200
+### Список эндпоинтов
 GET {{host}}/api
 
-### 3. Получить все сравнения -> 200
-GET {{host}}/api/diffs
+# ============================================================================
+# 2. РЕГИСТРАЦИЯ И ВХОД
+# ============================================================================
 
-### 4. Список с фильтром и пагинацией -> 200
-GET {{host}}/api/diffs?search=config&limit=1&offset=0
+### Регистрация — 201. Роль всегда user
+# @name register
+POST {{host}}/auth/register
+Content-Type: application/json
 
-### 5. Получить одно сравнение по ID -> 200
-GET {{host}}/api/diffs/1
+{
+  "email": "{{userEmail}}",
+  "password": "{{userPassword}}",
+  "passwordConfirm": "{{userPassword}}"
+}
 
-### 6. Несуществующий ID -> 404
-GET {{host}}/api/diffs/999
+### НЕГАТИВ: неверный формат email — 400
+POST {{host}}/auth/register
+Content-Type: application/json
 
-### 7. Создать новое сравнение -> 201 + заголовок Location
+{
+  "email": "не-email",
+  "password": "Str0ng#Pass1"
+}
+
+### НЕГАТИВ: слабый пароль — 400 (мера №3)
+POST {{host}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "weak@example.com",
+  "password": "qwerty"
+}
+
+### НЕГАТИВ: mass assignment — попытка задать себе role=admin — 400 (мера №9)
+POST {{host}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "hacker@example.com",
+  "password": "Str0ng#Pass1",
+  "role": "admin"
+}
+
+### Вход пользователя — 200, выдаётся accessToken + refresh-cookie
+# @name login
+POST {{host}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{userEmail}}",
+  "password": "{{userPassword}}"
+}
+
+### Вход администратора — 200
+# @name adminLogin
+POST {{host}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{adminEmail}}",
+  "password": "{{adminPassword}}"
+}
+
+@userToken = {{login.response.body.accessToken}}
+@userId = {{login.response.body.user.id}}
+@adminToken = {{adminLogin.response.body.accessToken}}
+
+### НЕГАТИВ: неверный пароль — 401 с обобщённым текстом
+POST {{host}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{userEmail}}",
+  "password": "Wrong#Pass1"
+}
+
+### НЕГАТИВ: несуществующий email — ТОТ ЖЕ текст 401 (анти-перечисление аккаунтов)
+POST {{host}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "nobody-here@example.com",
+  "password": "Str0ng#Pass1"
+}
+
+# ============================================================================
+# 3. ЗАЩИЩЁННЫЙ МАРШРУТ: С ТОКЕНОМ И БЕЗ
+# ============================================================================
+
+### С токеном — 200
+GET {{host}}/auth/me
+Authorization: Bearer {{userToken}}
+
+### НЕГАТИВ: без токена — 401
+GET {{host}}/auth/me
+
+### НЕГАТИВ: подделанный токен — 401
+GET {{host}}/auth/me
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJmYWtlIiwicm9sZSI6ImFkbWluIn0.badsignature
+
+### Обновление access-токена по httpOnly cookie (мера №5)
+POST {{host}}/auth/refresh
+
+### Свои активные сессии (мера №20)
+GET {{host}}/auth/sessions
+Authorization: Bearer {{userToken}}
+
+# ============================================================================
+# 4. СРАВНЕНИЯ — ПУБЛИЧНОЕ ЧТЕНИЕ
+# ============================================================================
+
+### Список — без токена, 200
+GET {{host}}/api/diffs?limit=10&offset=0
+
+### Поиск и фильтр
+GET {{host}}/api/diffs?search=README&onlyChanged=true
+
+### НЕГАТИВ: SQL-инъекция в строке запроса — 400 (мера №29)
+GET {{host}}/api/diffs?author=' OR 1=1 --
+
+### НЕГАТИВ: неизвестный параметр — 400
+GET {{host}}/api/diffs?sort=role
+
+### НЕГАТИВ: limit не число — 400
+GET {{host}}/api/diffs?limit=abc
+
+### НЕГАТИВ: id не UUID — 400
+GET {{host}}/api/diffs/123
+
+# ============================================================================
+# 5. СРАВНЕНИЯ — СОЗДАНИЕ И ПРАВКА
+# ============================================================================
+
+### НЕГАТИВ: создание без токена — 401
 POST {{host}}/api/diffs
 Content-Type: application/json
 
 {
-  "title": "server.js: рефакторинг маршрутов",
-  "author": "student",
+  "title": "Без токена",
+  "fileA": { "name": "a.txt", "content": "1" },
+  "fileB": { "name": "b.txt", "content": "2" }
+}
+
+### Создание с токеном — 201. Теги из title вырезаются (мера №19)
+# @name createDiff
+POST {{host}}/api/diffs
+Content-Type: application/json
+Authorization: Bearer {{userToken}}
+
+{
+  "title": "<script>alert(1)</script>Правки в index.js",
   "fileA": {
-    "name": "server.old.js",
-    "content": "const express = require('express');\nconst app = express();\napp.get('/', h);\napp.listen(3000);"
+    "name": "index.old.js",
+    "content": "const a = 1;\nconst b = 2;\nmodule.exports = { a, b };"
   },
   "fileB": {
-    "name": "server.new.js",
-    "content": "const express = require('express');\nconst app = express();\napp.use(express.json());\napp.use('/api/diffs', router);\napp.listen(3000);"
+    "name": "index.new.js",
+    "content": "const a = 1;\nconst b = 42;\nconst c = 3;\nmodule.exports = { a, b, c };"
   }
 }
 
-### 8. Создание с некорректными данными -> 400
-POST {{host}}/api/diffs
+@diffId = {{createDiff.response.body.id}}
+
+### Одно сравнение — 200
+GET {{host}}/api/diffs/{{diffId}}
+
+### Unified-патч — 200, text/plain
+GET {{host}}/api/diffs/{{diffId}}/patch
+
+### Правка своей записи — 200
+PATCH {{host}}/api/diffs/{{diffId}}
 Content-Type: application/json
+Authorization: Bearer {{userToken}}
 
 {
-  "title": "",
-  "fileA": { "name": "a.txt" }
+  "title": "Правки в index.js (v2)"
 }
 
-### 9. Битый JSON -> 400 (обрабатывается express.json + глобальный обработчик)
-POST {{host}}/api/diffs
+### Полная замена своей записи — 200
+PUT {{host}}/api/diffs/{{diffId}}
 Content-Type: application/json
-
-{ "title": "broken",
-
-### 10. Полное обновление (PUT) -> 200
-PUT {{host}}/api/diffs/1
-Content-Type: application/json
+Authorization: Bearer {{userToken}}
 
 {
-  "title": "README: правки перед релизом (обновлено)",
-  "author": "student",
-  "fileA": { "name": "README.old.md", "content": "# Diff Service\nВерсия 0.9" },
-  "fileB": { "name": "README.new.md", "content": "# Diff Service\nВерсия 1.0\nЛицензия: ISC" }
+  "title": "Полностью заменённое сравнение",
+  "fileA": { "name": "new.a.txt", "content": "строка 1\nстрока 2" },
+  "fileB": { "name": "new.b.txt", "content": "строка 1\nстрока 2 изменена" }
 }
 
-### 11. PUT по несуществующему ID -> 404
-PUT {{host}}/api/diffs/999
+### НЕГАТИВ: mass assignment — ownerId в PATCH — 400 (мера №9)
+PATCH {{host}}/api/diffs/{{diffId}}
 Content-Type: application/json
+Authorization: Bearer {{userToken}}
 
 {
-  "title": "нет такого",
-  "fileA": { "name": "a.txt", "content": "a" },
-  "fileB": { "name": "b.txt", "content": "b" }
+  "title": "Подмена владельца",
+  "ownerId": "00000000-0000-4000-8000-000000000000"
 }
 
-### 12. Частичное обновление (PATCH) -> 200
-PATCH {{host}}/api/diffs/2
+### НЕГАТИВ: PATCH без полей — 400
+PATCH {{host}}/api/diffs/{{diffId}}
 Content-Type: application/json
-
-{
-  "title": "config.json: смена порта на 8080"
-}
-
-### 13. PATCH с пустым телом -> 400
-PATCH {{host}}/api/diffs/2
-Content-Type: application/json
+Authorization: Bearer {{userToken}}
 
 {}
 
-### 14. Unified-представление патча -> 200, text/plain
-GET {{host}}/api/diffs/2/patch
+### НЕГАТИВ: DELETE от роли user — 403 (нужен admin)
+DELETE {{host}}/api/diffs/{{diffId}}
+Authorization: Bearer {{userToken}}
 
-### 15. Удаление -> 204 (без тела)
-DELETE {{host}}/api/diffs/2
+### DELETE от администратора — 204 (попадает в audit log)
+DELETE {{host}}/api/diffs/{{diffId}}
+Authorization: Bearer {{adminToken}}
 
-### 16. Повторное удаление того же ресурса -> 404
-DELETE {{host}}/api/diffs/2
+# ============================================================================
+# 6. ЗАЩИТА ОТ DoS, CONTENT-TYPE, XSS, ИНЪЕКЦИЙ
+# ============================================================================
 
-### 17. Несуществующий маршрут -> 404
-GET {{host}}/api/unknown
+### НЕГАТИВ: Content-Type: text/plain — 415 (мера №15)
+POST {{host}}/auth/login
+Content-Type: text/plain
+
+email=admin@example.com&password=123
+
+### НЕГАТИВ: битый JSON — 400
+POST {{host}}/auth/login
+Content-Type: application/json
+
+{ "email": "a@b.com",
+
+### XSS: содержимое файла — это ДАННЫЕ, оно сохраняется как есть
+### (экранируется на выводе: клиент использует textContent)
+POST {{host}}/api/diffs
+Content-Type: application/json
+Authorization: Bearer {{userToken}}
+
+{
+  "title": "<b>Сравнение</b> HTML-страниц",
+  "fileA": { "name": "page.old.html", "content": "<p>привет</p>" },
+  "fileB": { "name": "page.new.html", "content": "<img src=x onerror=alert(1)>" }
+}
+
+### SQL в теле запроса — легальные данные (сравниваем .sql-файлы), 201
+POST {{host}}/api/diffs
+Content-Type: application/json
+Authorization: Bearer {{userToken}}
+
+{
+  "title": "migration.sql: v1 -> v2",
+  "fileA": { "name": "v1.sql", "content": "SELECT * FROM users WHERE id = 1;" },
+  "fileB": { "name": "v2.sql", "content": "DROP TABLE users; -- ' OR 1=1 --" }
+}
+
+### НЕГАТИВ: сканирование /.env — 404 (пишется в security-лог)
+GET {{host}}/.env
+
+# ============================================================================
+# 7. РОЛЕВАЯ МОДЕЛЬ И АДМИНИСТРИРОВАНИЕ
+# ============================================================================
+
+### НЕГАТИВ: список пользователей от роли user — 403
+GET {{host}}/api/users
+Authorization: Bearer {{userToken}}
+
+### Список пользователей от администратора — 200
+GET {{host}}/api/users?limit=20&offset=0
+Authorization: Bearer {{adminToken}}
+
+### Свой профиль — 200
+GET {{host}}/api/users/{{userId}}
+Authorization: Bearer {{userToken}}
+
+### НЕГАТИВ: смена роли от роли user — 403
+PATCH {{host}}/api/users/{{userId}}/role
+Content-Type: application/json
+Authorization: Bearer {{userToken}}
+
+{
+  "role": "admin"
+}
+
+### Смена роли администратором — 200 (отзывает токены пользователя)
+PATCH {{host}}/api/users/{{userId}}/role
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+  "role": "moderator"
+}
+
+### НЕГАТИВ: недопустимое значение роли — 400
+PATCH {{host}}/api/users/{{userId}}/role
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+  "role": "superadmin"
+}
+
+### Снять блокировку аккаунта — 200 (мера №6)
+POST {{host}}/api/users/{{userId}}/unlock
+Authorization: Bearer {{adminToken}}
+
+### Журнал действий администратора — 200 (мера №7)
+GET {{host}}/api/admin/audit-log?limit=10
+Authorization: Bearer {{adminToken}}
+
+### НЕГАТИВ: audit log от роли user — 403
+GET {{host}}/api/admin/audit-log
+Authorization: Bearer {{userToken}}
+
+### Сводка активных мер безопасности — 200
+GET {{host}}/api/admin/security
+Authorization: Bearer {{adminToken}}
+
+### Удаление пользователя — 204 (только admin)
+DELETE {{host}}/api/users/{{userId}}
+Authorization: Bearer {{adminToken}}
+
+# ============================================================================
+# 8. БЛОКИРОВКА ПОСЛЕ ПЕРЕБОРА (мера №6)
+# ============================================================================
+# Отправьте запрос ниже 5 раз подряд: первые 4 дадут 401, пятый — 423 Locked.
+# После этого вход с ВЕРНЫМ паролем тоже вернёт 423 в течение 15 минут.
+
+### Неудачная попытка входа (повторить 5 раз)
+POST {{host}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{userEmail}}",
+  "password": "Wrong#Pass1"
+}
+
+### Вход с верным паролем после блокировки — 423
+POST {{host}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{userEmail}}",
+  "password": "{{userPassword}}"
+}
+
+# ============================================================================
+# 9. СБРОС ПАРОЛЯ ПО ВРЕМЕННОМУ ТОКЕНУ (мера №16)
+# ============================================================================
+
+### Запрос токена — 202. При NODE_ENV=development токен придёт в devResetToken
+# @name forgot
+POST {{host}}/auth/forgot-password
+Content-Type: application/json
+
+{
+  "email": "{{userEmail}}"
+}
+
+@resetToken = {{forgot.response.body.devResetToken}}
+
+### Тот же 202 для несуществующего адреса (существование не раскрывается)
+POST {{host}}/auth/forgot-password
+Content-Type: application/json
+
+{
+  "email": "definitely-not-registered@example.com"
+}
+
+### Установка нового пароля — 200, блокировка снимается
+POST {{host}}/auth/reset-password
+Content-Type: application/json
+
+{
+  "token": "{{resetToken}}",
+  "password": "New#Str0ngPass2"
+}
+
+### НЕГАТИВ: повторное использование токена — 400 (токен одноразовый)
+POST {{host}}/auth/reset-password
+Content-Type: application/json
+
+{
+  "token": "{{resetToken}}",
+  "password": "Another#Str0ng3"
+}
+
+### Смена пароля авторизованным пользователем
+POST {{host}}/auth/change-password
+Content-Type: application/json
+Authorization: Bearer {{userToken}}
+
+{
+  "currentPassword": "New#Str0ngPass2",
+  "newPassword": "Even#Str0nger4"
+}
+
+# ============================================================================
+# 10. RATE LIMITING — выполнять последним
+# ============================================================================
+# Отправьте запрос 11 раз подряд: после 10-го придёт 429
+# и в logs/security-*.log появится запись RATE_LIMIT_AUTH.
+
+### Флуд эндпоинта аутентификации
+POST {{host}}/auth/forgot-password
+Content-Type: application/json
+
+{
+  "email": "flood@example.com"
+}
+
+# ============================================================================
+# 11. ВЫХОД
+# ============================================================================
+
+### Закрыть текущую сессию
+POST {{host}}/auth/logout
+
+### Закрыть все сессии на всех устройствах (мера №20)
+POST {{host}}/auth/logout-all
+Authorization: Bearer {{adminToken}}

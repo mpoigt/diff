@@ -1,146 +1,113 @@
 'use strict';
 
-const { computeDiff } = require('../utils/diffEngine');
-
 /**
- * "Модель" данных. По условию лабораторной работы хранилище — обычный массив
- * в памяти процесса. Слой намеренно изолирован, чтобы в следующей работе
- * заменить его на реальную БД, не трогая контроллеры и маршруты.
+ * Основная сущность курсового проекта — сравнение двух файлов (diff).
+ *
+ * До этой работы данные жили в массиве в памяти; теперь это таблица PostgreSQL,
+ * а все обращения идут через Sequelize (параметризованные запросы).
+ * Контроллеры при этом не поменяли форму ответа: метод toApiJSON() собирает
+ * ту же структуру { fileA: {name, content}, ... }, что отдавалась раньше,
+ * поэтому фронтенд и старая коллекция запросов продолжают работать.
  */
-const diffs = [];
-let lastId = 0;
 
-function nextId() {
-  lastId += 1;
-  return String(lastId);
-}
+const { DataTypes, Model } = require('sequelize');
 
-function findAll({ search, author, onlyChanged } = {}) {
-  let result = diffs;
+const MAX_TITLE = 120;
+const MAX_CONTENT = 100 * 1024; // 100 КБ на файл
 
-  if (search) {
-    const needle = String(search).toLowerCase();
-    result = result.filter((d) => d.title.toLowerCase().includes(needle)
-      || d.fileA.name.toLowerCase().includes(needle)
-      || d.fileB.name.toLowerCase().includes(needle));
+class Diff extends Model {
+  /** Представление для API: вложенные объекты fileA/fileB вместо плоских колонок. */
+  toApiJSON({ includeChanges = true } = {}) {
+    const body = {
+      id: this.id,
+      title: this.title,
+      author: this.author,
+      ownerId: this.ownerId,
+      fileA: { name: this.fileAName, content: this.fileAContent },
+      fileB: { name: this.fileBName, content: this.fileBContent },
+      stats: this.stats,
+      createdAt: this.createdAt,
+      updatedAt: this.updatedAt,
+    };
+    if (includeChanges) body.changes = this.changes;
+    return body;
   }
 
-  if (author) {
-    const needle = String(author).toLowerCase();
-    result = result.filter((d) => d.author.toLowerCase() === needle);
+  /** Краткое представление для списка: без содержимого файлов и без changes. */
+  toSummaryJSON() {
+    return {
+      id: this.id,
+      title: this.title,
+      author: this.author,
+      ownerId: this.ownerId,
+      fileA: { name: this.fileAName },
+      fileB: { name: this.fileBName },
+      stats: this.stats,
+      createdAt: this.createdAt,
+      updatedAt: this.updatedAt,
+    };
   }
-
-  if (onlyChanged) {
-    result = result.filter((d) => !d.stats.identical);
-  }
-
-  return result;
 }
 
-function findById(id) {
-  return diffs.find((d) => d.id === String(id));
-}
-
-function create({ title, author, fileA, fileB }) {
-  const { changes, stats } = computeDiff(fileA.content, fileB.content);
-  const now = new Date().toISOString();
-
-  const diff = {
-    id: nextId(),
-    title,
-    author: author || 'anonymous',
-    fileA: { name: fileA.name, content: fileA.content },
-    fileB: { name: fileB.name, content: fileB.content },
-    stats,
-    changes,
-    createdAt: now,
-    updatedAt: now,
-  };
-
-  diffs.push(diff);
-  return diff;
-}
-
-/** Полная замена ресурса (PUT): пересчитываем diff заново. */
-function replace(id, { title, author, fileA, fileB }) {
-  const index = diffs.findIndex((d) => d.id === String(id));
-  if (index === -1) return null;
-
-  const { changes, stats } = computeDiff(fileA.content, fileB.content);
-
-  const updated = {
-    ...diffs[index],
-    title,
-    author: author || 'anonymous',
-    fileA: { name: fileA.name, content: fileA.content },
-    fileB: { name: fileB.name, content: fileB.content },
-    stats,
-    changes,
-    updatedAt: new Date().toISOString(),
-  };
-
-  diffs[index] = updated;
-  return updated;
-}
-
-/** Частичное обновление (PATCH): перерасчёт только если менялось содержимое файлов. */
-function update(id, patch) {
-  const index = diffs.findIndex((d) => d.id === String(id));
-  if (index === -1) return null;
-
-  const current = diffs[index];
-  const updated = {
-    ...current,
-    title: patch.title !== undefined ? patch.title : current.title,
-    author: patch.author !== undefined ? patch.author : current.author,
-    fileA: patch.fileA ? { ...current.fileA, ...patch.fileA } : current.fileA,
-    fileB: patch.fileB ? { ...current.fileB, ...patch.fileB } : current.fileB,
-    updatedAt: new Date().toISOString(),
-  };
-
-  if (patch.fileA || patch.fileB) {
-    const { changes, stats } = computeDiff(updated.fileA.content, updated.fileB.content);
-    updated.changes = changes;
-    updated.stats = stats;
-  }
-
-  diffs[index] = updated;
-  return updated;
-}
-
-function remove(id) {
-  const index = diffs.findIndex((d) => d.id === String(id));
-  if (index === -1) return null;
-  return diffs.splice(index, 1)[0];
-}
-
-function count() {
-  return diffs.length;
-}
-
-/** Демонстрационные данные, чтобы GET /api/diffs не был пустым при старте. */
-function seed() {
-  if (diffs.length > 0) return;
-
-  create({
-    title: 'README: правки перед релизом',
-    author: 'student',
-    fileA: {
-      name: 'README.old.md',
-      content: '# Diff Service\nВерсия 0.9\nЗапуск: node server.js\nTODO: описать API',
+function initDiff(sequelize) {
+  Diff.init({
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
     },
-    fileB: {
-      name: 'README.new.md',
-      content: '# Diff Service\nВерсия 1.0\nЗапуск: npm run dev\nTODO: описать API\nЛицензия: ISC',
+    title: {
+      type: DataTypes.STRING(MAX_TITLE),
+      allowNull: false,
+      validate: {
+        notEmpty: { msg: 'Заголовок не может быть пустым' },
+        len: { args: [1, MAX_TITLE], msg: `Заголовок до ${MAX_TITLE} символов` },
+      },
     },
+    // Отображаемое имя автора. Кто владелец ресурса — определяет ownerId, а не это поле:
+    // поле author пользователь задать не может (защита от mass assignment, мера №9).
+    author: {
+      type: DataTypes.STRING(120),
+      allowNull: false,
+      defaultValue: 'anonymous',
+    },
+    fileAName: {
+      type: DataTypes.STRING(255),
+      allowNull: false,
+      validate: { notEmpty: { msg: 'Имя файла A обязательно' } },
+    },
+    fileAContent: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+      validate: { len: { args: [0, MAX_CONTENT], msg: `Файл A до ${MAX_CONTENT} символов` } },
+    },
+    fileBName: {
+      type: DataTypes.STRING(255),
+      allowNull: false,
+      validate: { notEmpty: { msg: 'Имя файла B обязательно' } },
+    },
+    fileBContent: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+      validate: { len: { args: [0, MAX_CONTENT], msg: `Файл B до ${MAX_CONTENT} символов` } },
+    },
+    // Результат работы diffEngine. JSONB — нативный тип PostgreSQL,
+    // значение уходит в БД параметром, инъекция через содержимое файла невозможна.
+    stats: { type: DataTypes.JSONB, allowNull: false },
+    changes: { type: DataTypes.JSONB, allowNull: false },
+    ownerId: {
+      type: DataTypes.UUID,
+      allowNull: true, // null — у демо-записей, созданных сидером
+    },
+  }, {
+    sequelize,
+    modelName: 'Diff',
+    tableName: 'diffs',
+    timestamps: true,
+    indexes: [{ fields: ['ownerId'] }, { fields: ['author'] }],
   });
 
-  create({
-    title: 'config.json: смена порта',
-    author: 'student',
-    fileA: { name: 'config.old.json', content: '{\n  "port": 3000,\n  "debug": true\n}' },
-    fileB: { name: 'config.new.json', content: '{\n  "port": 8080,\n  "debug": false\n}' },
-  });
+  return Diff;
 }
 
-module.exports = { findAll, findById, create, replace, update, remove, count, seed };
+module.exports = { Diff, initDiff, MAX_TITLE, MAX_CONTENT };
