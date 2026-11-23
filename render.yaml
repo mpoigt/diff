@@ -3,10 +3,11 @@ services:
     name: diff-service-api
     runtime: node
     plan: free
-    branch: kr22
+    branch: ipr22
+    autoDeployTrigger: "off"
     buildCommand: npm ci --omit=dev
     startCommand: npm start
-    healthCheckPath: /health
+    healthCheckPath: /ready
     envVars:
       - key: NODE_VERSION
         value: "22"

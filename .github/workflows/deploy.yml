@@ -1,0 +1,108 @@
+name: Diff Service CI and deploy
+on:
+  push:
+    branches: [main, ipr22, kr22]
+  pull_request:
+    branches: [main, ipr22, kr22]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-only
+          POSTGRES_DB: diff_service
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd 'pg_isready -U postgres -d diff_service'
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:ci-only@localhost:5432/diff_service
+      JWT_SECRET: ci-access-token-secret-is-local-only
+      JWT_REFRESH_SECRET: ci-refresh-token-secret-is-local-only
+      ADMIN_EMAIL: admin@ci.example
+      ADMIN_PASSWORD: DiffCI-only!2468
+      NODE_ENV: development
+      HOST: 127.0.0.1
+      PORT: 3000
+      AUTH_RATE_LIMIT_MAX: 200
+      RATE_LIMIT_MAX: 5000
+      USER_RATE_LIMIT_MAX: 500
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            client/package-lock.json
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm --prefix client ci
+      - name: Check server syntax
+        run: git ls-files -z '*.js' ':!:client/*' | xargs -0 -n 1 node --check
+      - name: Test API against PostgreSQL
+        run: |
+          node server.js > "$RUNNER_TEMP/diff-service.log" 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          curl --fail --silent --retry 15 --retry-connrefused --retry-delay 1 http://127.0.0.1:3000/ready
+          npm run smoke
+          node scripts/checkMetrics.js http://127.0.0.1:3000
+      - name: Build React
+        run: npm --prefix client run build
+
+  deploy:
+    needs: verify
+    if: >-
+      github.event_name != 'pull_request' &&
+      vars.ENABLE_DEPLOY == 'true' &&
+      github.ref_name == (vars.DEPLOY_BRANCH || 'main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    concurrency:
+      group: diff-service-cloud
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Deploy and verify live revisions
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+          NETLIFY_BUILD_HOOK: ${{ secrets.NETLIFY_BUILD_HOOK }}
+          BACKEND_URL: ${{ vars.BACKEND_URL }}
+          FRONTEND_URL: ${{ vars.FRONTEND_URL }}
+        run: node scripts/deploy.mjs
+
+  notify:
+    needs: [verify, deploy]
+    if: always() && github.event_name != 'pull_request' && vars.ENABLE_TELEGRAM == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Send Telegram status
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          CI_STATUS: ${{ needs.verify.result }}
+          DEPLOY_STATUS: ${{ needs.deploy.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          test -n "$BOT_TOKEN" && test -n "$CHAT_ID"
+          curl --fail --silent --output /dev/null --max-time 20 \
+            --data-urlencode "chat_id=$CHAT_ID" \
+            --data-urlencode "text=Diff Service | CI: $CI_STATUS | Deploy: $DEPLOY_STATUS | $RUN_URL" \
+            "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage"

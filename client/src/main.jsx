@@ -2,11 +2,14 @@ import { lazy, Suspense, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Link, NavLink, Route, Routes, useNavigate } from 'react-router-dom';
 import { request } from './api';
+import { watchClientErrors } from './telemetry';
 import './styles.css';
 
 const History = lazy(() => import('./pages/History'));
 const Details = lazy(() => import('./pages/Details'));
 const Editor = lazy(() => import('./pages/Editor'));
+
+void watchClientErrors().catch(() => console.warn('Client telemetry could not be initialized.'));
 
 function Home() {
   return <section className="hero">

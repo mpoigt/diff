@@ -32,6 +32,11 @@ const jsonFormat = winston.format.combine(
 const consoleFormat = winston.format.combine(
   winston.format.timestamp({ format: 'HH:mm:ss' }),
   winston.format.printf(({ timestamp, level, message, ...rest }) => {
+    if (isProduction) {
+      const { event, method, status, requestId } = rest;
+      const text = event || (status ? 'HTTP request' : 'Application event');
+      return `${timestamp} [${level.toUpperCase()}] ${text} ${JSON.stringify({ method, status, requestId })}`;
+    }
     const extra = Object.keys(rest).length ? ` ${JSON.stringify(rest)}` : '';
     return `${timestamp} [${level.toUpperCase()}] ${message}${extra}`;
   }),
