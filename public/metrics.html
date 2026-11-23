@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Метрики Diff Service</title>
+  <link rel="stylesheet" href="/metrics.css">
+  <script src="/metrics.js" defer></script>
+</head>
+<body>
+  <main>
+    <h1>Метрики Diff Service</h1>
+    <dl>
+      <div><dt>Время работы</dt><dd id="uptime">—</dd></div>
+      <div><dt>Запросы</dt><dd id="requests">—</dd></div>
+      <div><dt>Ошибки 5xx</dt><dd id="errors">—</dd></div>
+      <div><dt>Память процесса (RSS)</dt><dd id="memory">—</dd></div>
+      <div><dt>Использованная куча</dt><dd id="heap">—</dd></div>
+      <div><dt>Время CPU</dt><dd id="cpu">—</dd></div>
+    </dl>
+    <p id="status" role="status">Загрузка…</p>
+    <button type="button" id="reload">Обновить</button>
+    <a href="/metrics">Метрики в JSON</a>
+  </main>
+</body>
+</html>

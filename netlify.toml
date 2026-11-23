@@ -1,0 +1,18 @@
+[build]
+  base = "client"
+  command = "node scripts/check-build-env.mjs && npm run build"
+  publish = "dist"
+  ignore = 'test "$GATED_NETLIFY_BUILDS" = true && test -z "$INCOMING_HOOK_URL"'
+
+[build.environment]
+  NODE_VERSION = "22"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/version.json"
+  [headers.values]
+    Cache-Control = "no-store"

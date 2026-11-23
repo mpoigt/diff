@@ -29,6 +29,8 @@ const express = require('express');
 const cookieParser = require('cookie-parser');
 
 const config = require('./config/env');
+const { sequelize } = require('./config/db');
+const { observeHttp, metrics, release } = require('./services/telemetry');
 const securityHeaders = require('./middleware/securityHeaders');
 const { corsMiddleware } = require('./middleware/corsWhitelist');
 const httpLogger = require('./middleware/logger');
@@ -51,6 +53,7 @@ app.set('trust proxy', config.trustedProxies);
 app.disable('x-powered-by');
 // Жёсткий роутинг: /api/diffs и /api/diffs/ — один и тот же маршрут
 app.set('strict routing', false);
+app.use(observeHttp);
 
 // ── 2. Заголовки безопасности: helmet + CSP (№13) + X-Frame-Options (№18) ───
 app.use(securityHeaders);
@@ -89,7 +92,23 @@ app.use(express.static(path.join(__dirname, '..', 'public'), {
 
 // ── Служебные эндпоинты ─────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', uptime: Math.round(process.uptime()), env: config.nodeEnv });
+  res.set('Cache-Control', 'no-store');
+  res.json({ status: 'ok', uptime: Math.round(process.uptime()), env: config.nodeEnv, release });
+});
+
+app.get('/ready', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    await sequelize.authenticate({ logging: false });
+    res.json({ status: 'ready', release });
+  } catch {
+    res.status(503).json({ status: 'unavailable' });
+  }
+});
+
+app.get('/metrics', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(metrics());
 });
 
 app.get('/API.md', (req, res) => {

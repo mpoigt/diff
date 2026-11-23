@@ -58,7 +58,14 @@ const config = {
   nodeEnv,
   isProduction,
   port: num('PORT', 3000),
+  host: process.env.HOST || '0.0.0.0',
   trustedProxies: list('TRUSTED_PROXIES', []),
+
+  telemetry: {
+    sentryDsn: process.env.SENTRY_DSN || null,
+    logsUrl: process.env.BETTER_STACK_LOGS_URL || null,
+    logsToken: process.env.BETTER_STACK_SOURCE_TOKEN || null,
+  },
 
   db: {
     url: process.env.DATABASE_URL && process.env.DATABASE_URL.trim() !== ''
