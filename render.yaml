@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: diff-service-api
+    runtime: node
+    plan: free
+    branch: kr22
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: DB_SSL
+        value: "true"
+      - key: DB_SYNC_ALTER
+        value: "false"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: CORS_WHITELIST
+        sync: false
