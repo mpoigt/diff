@@ -5,7 +5,7 @@
 ## 1. Репозиторий и проверки
 
 1. Ветка `ipr22` включает backend из `kr21` и React-клиент из `kr22`.
-2. В [.github/workflows/deploy.yml](../.github/workflows/deploy.yml) задача `verify` устанавливает зависимости из двух файлов блокировки, проверяет синтаксис, поднимает PostgreSQL 17, запускает сервер, 62 проверки API и проверку метрик, затем собирает React на Node.js 22.
+2. В [.github/workflows/deploy.yml](../.github/workflows/deploy.yml) задача `verify` устанавливает зависимости из двух файлов блокировки, проверяет синтаксис, запускает PostgreSQL из образа Ubuntu 24.04, сервер, 62 проверки API и проверку метрик, затем собирает React на Node.js 22.
 3. GitHub запускает проверки на push и pull request для `main`, `ipr22` и `kr22`. Развёртывание запускается после успешных проверок, если `ENABLE_DEPLOY=true` и push пришёл в `DEPLOY_BRANCH`. Ветка по умолчанию для развёртывания — `main`.
 4. Локально выполните шаги из [KR21-guide.md](KR21-guide.md) и [KR22-guide.md](KR22-guide.md). Дополнительно запустите `node scripts/checkMetrics.js http://localhost:33021`.
 

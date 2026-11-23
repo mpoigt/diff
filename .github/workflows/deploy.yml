@@ -11,22 +11,10 @@ permissions:
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
-    services:
-      postgres:
-        image: postgres:17
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: ci-only
-          POSTGRES_DB: diff_service
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd 'pg_isready -U postgres -d diff_service'
-          --health-interval 5s --health-timeout 5s --health-retries 10
     env:
-      DATABASE_URL: postgres://postgres:ci-only@localhost:5432/diff_service
+      DATABASE_URL: postgres://diff_ci:ci-only@127.0.0.1:5432/diff_service
       JWT_SECRET: ci-access-token-secret-is-local-only
       JWT_REFRESH_SECRET: ci-refresh-token-secret-is-local-only
       ADMIN_EMAIL: admin@ci.example
@@ -51,7 +39,12 @@ jobs:
           npm ci
           npm --prefix client ci
       - name: Check server syntax
-        run: git ls-files -z '*.js' ':!:client/*' | xargs -0 -n 1 node --check
+        run: git ls-files -z '*.js' '*.mjs' ':!client/*' | xargs -0 -r -n 1 node --check
+      - name: Start PostgreSQL on the runner
+        run: |
+          sudo systemctl start postgresql.service
+          sudo -u postgres psql -v ON_ERROR_STOP=1 -c "CREATE ROLE diff_ci LOGIN PASSWORD 'ci-only'"
+          sudo -u postgres createdb --owner=diff_ci diff_service
       - name: Test API against PostgreSQL
         run: |
           node server.js > "$RUNNER_TEMP/diff-service.log" 2>&1 &
