@@ -3,7 +3,7 @@ services:
     name: diff-service-api
     runtime: node
     plan: free
-    branch: ipr22
+    branch: kr22
     autoDeployTrigger: "off"
     buildCommand: npm ci --omit=dev
     startCommand: npm start
