@@ -6,9 +6,7 @@
  * ПОРЯДОК middleware критичен для безопасности — он выстроен от самых
  * дешёвых и общих проверок к самым дорогим:
  *
- *   1. trust proxy          — чтобы req.ip был настоящим IP клиента,
- *                             а не адресом прокси (иначе rate limit
- *                             считает всех за одного).
+ *   1. trust proxy          — учитывать адрес клиента только за доверенным прокси.
  *   2. helmet               — заголовки безопасности, включая CSP (№13)
  *                             и X-Frame-Options: DENY (№18).
  *   3. httpLogger           — лог запросов и подозрительных ответов.
@@ -47,8 +45,8 @@ const diffsRoutes = require('./routes/diffs.routes');
 
 const app = express();
 
-// ── 1. Доверяем первому прокси (nginx/Render): нужен настоящий req.ip ────────
-app.set('trust proxy', 1);
+// ── 1. Учитываем X-Forwarded-For только от явно доверенных прокси ────────────
+app.set('trust proxy', config.trustedProxies);
 // Не сообщаем клиенту, на чём написан сервер
 app.disable('x-powered-by');
 // Жёсткий роутинг: /api/diffs и /api/diffs/ — один и тот же маршрут
@@ -94,6 +92,10 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', uptime: Math.round(process.uptime()), env: config.nodeEnv });
 });
 
+app.get('/API.md', (req, res) => {
+  res.type('text/plain').sendFile(path.join(__dirname, '..', 'API.md'));
+});
+
 app.get('/api', (req, res) => {
   res.json({
     service: 'Diff Service API',
@@ -115,6 +117,8 @@ app.get('/api', (req, res) => {
       ],
       diffs: [
         'GET    /api/diffs              (публично)',
+        'GET    /api/diffs/stats        (публично)',
+        'GET    /api/diffs/slug/:slug   (публично)',
         'GET    /api/diffs/:id          (публично)',
         'GET    /api/diffs/:id/patch    (публично)',
         'POST   /api/diffs              (user+)',

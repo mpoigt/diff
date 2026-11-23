@@ -64,6 +64,10 @@ npm start       # обычный запуск
 
 Файл `.env` в `.gitignore` и в репозиторий не попадает — в Git лежит только `.env.example`.
 
+Если сервер работает за обратным прокси, укажите его IP-адрес или CIDR в
+`TRUSTED_PROXIES`. При прямом подключении оставьте значение пустым. Это
+сохраняет привязку ограничений частоты и журналов к адресу клиента.
+
 ### Облачная БД вместо локальной
 
 Для Neon / Render / Supabase достаточно подставить их строку подключения
@@ -84,11 +88,11 @@ server.js                           точка входа: подключени�
 API.md                              документация API
 REPORT.md                           отчёт по лабораторной работе
 docs/
-  DiffServiceAPI.postman_collection.json   коллекция Postman (61 запрос с тестами)
+  DiffServiceAPI.postman_collection.json   коллекция Postman (71 запрос с тестами)
 requests.http                       те же запросы для REST Client (VS Code)
 scripts/
   createDatabase.js                 npm run db:create — создание БД
-  smokeTest.js                      npm run smoke — 49 автопроверок API
+  smokeTest.js                      npm run smoke — 62 автопроверки API
 src/
   app.js                            сборка Express: порядок middleware
   config/
@@ -212,7 +216,7 @@ logs/                               логи с ротацией (в .gitignore)
 # терминал 1 — сервер с поднятыми лимитами (прогон делает больше 10 запросов к /auth/*)
 AUTH_RATE_LIMIT_MAX=200 RATE_LIMIT_MAX=5000 USER_RATE_LIMIT_MAX=500 npm run dev
 
-# терминал 2 — 49 проверок, включая негативные сценарии
+# терминал 2 — 62 проверки, включая негативные сценарии
 npm run smoke
 ```
 
@@ -230,9 +234,9 @@ $env:AUTH_RATE_LIMIT_MAX=200; $env:RATE_LIMIT_MAX=5000; $env:USER_RATE_LIMIT_MAX
 1. Импортировать `docs/DiffServiceAPI.postman_collection.json`.
 2. Проверить переменную коллекции `baseUrl` (по умолчанию `http://localhost:3000`).
 3. Выполнять папки по порядку: запросы входа сами сохраняют токены в переменные.
-4. Папку **08. Rate limiting** запускать последней — она исчерпывает лимит на 15 минут.
+4. Для запуска всей коллекции используйте отдельный экземпляр сервера с поднятым лимитом аутентификации, как для smoke-тестов выше. Проверку срабатывания штатного лимита выполняйте отдельно в папке **09. Ограничение частоты запросов**.
 
-В коллекции 61 запрос; у каждого есть тесты (`pm.test`), в том числе негативные
+В коллекции 71 запрос; у каждого есть тесты (`pm.test`), в том числе негативные
 сценарии с префиксом «НЕГАТИВ».
 
 ### REST Client
@@ -290,7 +294,7 @@ $env:AUTH_RATE_LIMIT_MAX=200; $env:RATE_LIMIT_MAX=5000; $env:USER_RATE_LIMIT_MAX
 | `npm run dev` | запуск с автоперезапуском |
 | `npm start` | обычный запуск |
 | `npm run db:create` | создать базу данных, если её нет |
-| `npm run smoke` | прогнать 49 автопроверок API |
+| `npm run smoke` | прогнать 62 автопроверки API |
 | `npm run security:check` | `npm audit` по production-зависимостям |
 
 ---

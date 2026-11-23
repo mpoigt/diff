@@ -52,6 +52,18 @@
     {
       "key": "victimEmail",
       "value": ""
+    },
+    {
+      "key": "diffSlug",
+      "value": ""
+    },
+    {
+      "key": "victimId",
+      "value": ""
+    },
+    {
+      "key": "victimToken",
+      "value": ""
     }
   ],
   "item": [
@@ -87,7 +99,7 @@
                   "pm.test('X-Content-Type-Options: nosniff', () =>",
                   "  pm.expect(pm.response.headers.get('X-Content-Type-Options')).to.eql('nosniff'));",
                   "pm.test('X-Powered-By скрыт', () =>",
-                  "  pm.expect(pm.response.headers.get('X-Powered-By')).to.be.null);"
+                  "  pm.expect(pm.response.headers.has('X-Powered-By')).to.eql(false));"
                 ]
               }
             }
@@ -115,6 +127,34 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('Статус 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /API.md — документация (200)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/API.md",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "API.md"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Статус 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Описание содержит маршруты аутентификации', () => pm.expect(pm.response.text()).to.include('/auth/register'));"
                 ]
               }
             }
@@ -542,7 +582,7 @@
             "header": [
               {
                 "key": "Authorization",
-                "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJmYWtlIiwicm9sZSI6ImFkbWluIn0.подделаннаяПодпись"
+                "value": "Bearer invalid-token"
               }
             ],
             "url": {
@@ -845,6 +885,36 @@
               ]
             }
           }
+        },
+        {
+          "name": "GET /api/diffs/stats — сводная статистика (200)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/diffs/stats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "diffs",
+                "stats"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Статус 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Возвращено число сравнений', () => pm.expect(pm.response.json().totalDiffs).to.be.a('number'));"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
@@ -951,7 +1021,8 @@
                 "exec": [
                   "pm.test('Статус 200', () => pm.response.to.have.status(200));",
                   "pm.test('Вернулся массив changes', () =>",
-                  "  pm.expect(pm.response.json().changes).to.be.an('array'));"
+                  "  pm.expect(pm.response.json().changes).to.be.an('array'));",
+                  "pm.collectionVariables.set('diffSlug', pm.response.json().slug);"
                 ]
               }
             }
@@ -971,6 +1042,37 @@
               ]
             }
           }
+        },
+        {
+          "name": "GET /api/diffs/slug/:slug — то же сравнение (200)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/diffs/slug/{{diffSlug}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "diffs",
+                "slug",
+                "{{diffSlug}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Статус 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Идентификатор совпадает', () => pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('diffId')));"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "GET /api/diffs/:id/patch — unified-представление (200, text/plain)",
@@ -1965,7 +2067,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Статус 201', () => pm.response.to.have.status(201));"
+                  "pm.test('Статус 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('victimId', pm.response.json().user.id);"
                 ]
               }
             }
@@ -1995,16 +2098,125 @@
           }
         },
         {
-          "name": "Неудачные входы 1-4 — 401 с остатком попыток (запустить 4 раза)",
+          "name": "Неудачная попытка входа №1 (401)",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Статус 401 или 423', () => pm.expect(pm.response.code).to.be.oneOf([401, 423]));",
-                  "// Остаток попыток в ответ НЕ выводится намеренно: подсказка помогала бы атакующему.",
-                  "// Счётчик виден в логах: logs/security-*.log, поле attemptsLeft."
+                  "pm.test('Статус 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{victimEmail}}\",\n  \"password\": \"Wrong#Pass1\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Неудачная попытка входа №2 (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Статус 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{victimEmail}}\",\n  \"password\": \"Wrong#Pass1\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Неудачная попытка входа №3 (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Статус 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{victimEmail}}\",\n  \"password\": \"Wrong#Pass1\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Неудачная попытка входа №4 (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Статус 401', () => pm.response.to.have.status(401));"
                 ]
               }
             }
@@ -2311,7 +2523,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Статус 200', () => pm.response.to.have.status(200));"
+                  "pm.test('Статус 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('victimToken', pm.response.json().accessToken);"
                 ]
               }
             }
@@ -2339,61 +2552,154 @@
               ]
             }
           }
-        }
-      ]
-    },
-    {
-      "name": "08. Rate limiting (запускать последней)",
-      "item": [
+        },
         {
-          "name": "Флуд /auth/forgot-password — ожидается 429",
-          "description": "Запустите запрос 11+ раз подряд (Postman Runner с итерациями). При штатной настройке лимит — 10 запросов к /auth/* за 15 минут с одного IP. После срабатывания в logs/security-*.log появляется запись RATE_LIMIT_AUTH.",
+          "name": "POST /api/users/:id/unlock — доступ администратора (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/{{victimId}}/unlock",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "{{victimId}}",
+                "unlock"
+              ]
+            }
+          },
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Статус 202 (в пределах лимита) или 429 (лимит превышен)', () =>",
-                  "  pm.expect(pm.response.code).to.be.oneOf([202, 429]));",
-                  "if (pm.response.code === 429) {",
-                  "  pm.test('Указано время ожидания', () =>",
-                  "    pm.expect(pm.response.json().retryAfterSeconds).to.be.a('number'));",
-                  "}",
-                  "pm.test('Присутствуют заголовки RateLimit-*', () =>",
-                  "  pm.expect(pm.response.headers.get('RateLimit-Limit') || pm.response.headers.get('RateLimit')).to.not.be.undefined);"
+                  "pm.test('Статус 200', () => pm.response.to.have.status(200));"
                 ]
               }
             }
-          ],
+          ]
+        },
+        {
+          "name": "POST /auth/change-password — смена пароля (200)",
           "request": {
             "method": "POST",
             "header": [
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{victimToken}}"
               }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"email\": \"flood@example.com\"\n}"
-            },
             "url": {
-              "raw": "{{baseUrl}}/auth/forgot-password",
+              "raw": "{{baseUrl}}/auth/change-password",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "auth",
-                "forgot-password"
+                "change-password"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"New#Str0ngPass2\",\n  \"newPassword\": \"Change#2026pass\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Статус 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /auth/me — прежний токен после смены пароля (401)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{victimToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "me"
               ]
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Статус 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE /api/users/:id — удаление тестового пользователя (204)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/{{victimId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "{{victimId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Статус 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
     {
-      "name": "09. Выход",
+      "name": "08. Выход",
       "item": [
         {
           "name": "POST /auth/logout — закрыть текущую сессию (200)",
@@ -2457,6 +2763,56 @@
               }
             }
           ]
+        }
+      ]
+    },
+    {
+      "name": "09. Ограничение частоты запросов",
+      "item": [
+        {
+          "name": "Флуд /auth/forgot-password — ожидается 429",
+          "description": "Запустите запрос 11+ раз подряд (Postman Runner с итерациями). При штатной настройке лимит — 10 запросов к /auth/* за 15 минут с одного IP. После срабатывания в logs/security-*.log появляется запись RATE_LIMIT_AUTH.",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Статус 202 (в пределах лимита) или 429 (лимит превышен)', () =>",
+                  "  pm.expect(pm.response.code).to.be.oneOf([202, 429]));",
+                  "if (pm.response.code === 429) {",
+                  "  pm.test('Указано время ожидания', () =>",
+                  "    pm.expect(pm.response.json().retryAfterSeconds).to.be.a('number'));",
+                  "}",
+                  "pm.test('Присутствуют заголовки RateLimit-*', () =>",
+                  "  pm.expect(pm.response.headers.get('RateLimit-Limit') || pm.response.headers.get('RateLimit')).to.not.be.undefined);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"flood@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/forgot-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "forgot-password"
+              ]
+            }
+          }
         }
       ]
     }

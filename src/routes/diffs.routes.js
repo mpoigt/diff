@@ -8,6 +8,8 @@
  *   метод  путь                     доступ
  *   ───────────────────────────────────────────────────────────────────────
  *   GET    /api/diffs                публично (токен не нужен)
+ *   GET    /api/diffs/stats          публично — подсчёт статистики
+ *   GET    /api/diffs/slug/:slug     публично — поиск по уникальному slug
  *   GET    /api/diffs/:id            публично
  *   GET    /api/diffs/:id/patch      публично
  *   POST   /api/diffs                аутентифицированный (любая роль)
@@ -41,6 +43,25 @@ router.get(
   detectInjectionInQuery,
   validate(schemas.listQuery, 'query'),
   controller.getAll,
+);
+
+// ВАЖНО: статические пути регистрируются ДО '/:id'.
+// Иначе Express сопоставил бы '/stats' с шаблоном '/:id', валидатор
+// увидел бы id="stats" и вернул 400 вместо статистики.
+
+// Дополнительный эндпоинт: подсчёт статистики по истории сравнений
+router.get(
+  '/stats',
+  detectInjectionInQuery,
+  validate(schemas.statsQuery, 'query'),
+  controller.getStats,
+);
+
+// Получение записи по уникальному полю slug
+router.get(
+  '/slug/:slug',
+  validate(schemas.slugParam, 'params'),
+  controller.getBySlug,
 );
 
 router.get(

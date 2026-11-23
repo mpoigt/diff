@@ -10,6 +10,7 @@ const { Diff, initDiff, MAX_TITLE, MAX_CONTENT } = require('./diff.model');
 const { Session, initSession } = require('./session.model');
 const { AuditLog, initAuditLog } = require('./auditLog.model');
 const { computeDiff } = require('../utils/diffEngine');
+const { slugify } = require('../utils/slug');
 const { hashPassword } = require('../utils/password');
 const { logger } = require('../utils/logger');
 const config = require('../config/env');
@@ -92,8 +93,12 @@ async function seedDiffs() {
 
   for (const sample of samples) {
     const { changes, stats } = computeDiff(sample.fileAContent, sample.fileBContent);
+    // slug у демо-записей строится из заголовка — тем же способом,
+    // что и в контроллере при создании через API
     // eslint-disable-next-line no-await-in-loop
-    await Diff.create({ ...sample, changes, stats });
+    await Diff.create({
+      ...sample, slug: slugify(sample.title), changes, stats,
+    });
   }
   logger.info('Добавлены демонстрационные сравнения');
 }

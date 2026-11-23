@@ -19,7 +19,8 @@ const crypto = require('crypto');
 const config = require('../config/env');
 
 const MIN_LENGTH = 8;
-const MAX_LENGTH = 128; // bcrypt учитывает только первые 72 байта; длинные пароли режем заранее
+const MAX_LENGTH = 128;
+const BCRYPT_MAX_BYTES = 72;
 
 const BLACKLIST = new Set([
   'password', 'password1', 'password123', '12345678', '123456789', '1234567890',
@@ -43,6 +44,9 @@ function checkPasswordStrength(password) {
   }
   if (password.length > MAX_LENGTH) {
     errors.push(`Пароль не должен превышать ${MAX_LENGTH} символов`);
+  }
+  if (Buffer.byteLength(password, 'utf8') > BCRYPT_MAX_BYTES) {
+    errors.push(`Пароль не должен превышать ${BCRYPT_MAX_BYTES} байт в UTF-8`);
   }
   if (!/[a-z]/.test(password)) {
     errors.push('Пароль должен содержать строчную латинскую букву');
@@ -81,7 +85,7 @@ function verifyPassword(plain, hash) {
  * Нужно, чтобы время ответа на «нет такого email» и «неверный пароль» совпадало —
  * иначе по скорости ответа можно перечислить существующие аккаунты (user enumeration).
  */
-const DUMMY_HASH = bcrypt.hashSync('dummy-password-for-timing-equalization', 10);
+const DUMMY_HASH = bcrypt.hashSync('dummy-password-for-timing-equalization', config.security.bcryptRounds);
 function burnTime() {
   return bcrypt.compare('dummy-password-for-timing-equalization', DUMMY_HASH);
 }
@@ -105,5 +109,5 @@ module.exports = {
   sha256,
   MIN_LENGTH,
   MAX_LENGTH,
-  PASSWORD_RULE_TEXT: 'минимум 8 символов, заглавная и строчная латинские буквы, цифра и спецсимвол, без пробелов',
+  PASSWORD_RULE_TEXT: 'от 8 символов до 72 байт в UTF-8, заглавная и строчная латинские буквы, цифра и спецсимвол, без пробелов',
 };

@@ -11,6 +11,7 @@
  */
 
 const { DataTypes, Model } = require('sequelize');
+const { SLUG_PATTERN, MAX_SLUG } = require('../utils/slug');
 
 const MAX_TITLE = 120;
 const MAX_CONTENT = 100 * 1024; // 100 КБ на файл
@@ -20,6 +21,7 @@ class Diff extends Model {
   toApiJSON({ includeChanges = true } = {}) {
     const body = {
       id: this.id,
+      slug: this.slug,
       title: this.title,
       author: this.author,
       ownerId: this.ownerId,
@@ -37,6 +39,7 @@ class Diff extends Model {
   toSummaryJSON() {
     return {
       id: this.id,
+      slug: this.slug,
       title: this.title,
       author: this.author,
       ownerId: this.ownerId,
@@ -55,6 +58,21 @@ function initDiff(sequelize) {
       type: DataTypes.UUID,
       defaultValue: DataTypes.UUIDV4,
       primaryKey: true,
+    },
+    // Уникальное поле сущности (требование КР №1): человекочитаемый
+    // идентификатор, по которому запись можно получить вместо UUID.
+    // Генерируется из title, если клиент не задал его сам.
+    slug: {
+      type: DataTypes.STRING(MAX_SLUG),
+      allowNull: false,
+      unique: true,
+      validate: {
+        is: {
+          args: SLUG_PATTERN,
+          msg: 'slug может содержать только строчные латинские буквы, цифры и дефисы',
+        },
+        len: { args: [3, MAX_SLUG], msg: `slug должен быть от 3 до ${MAX_SLUG} символов` },
+      },
     },
     title: {
       type: DataTypes.STRING(MAX_TITLE),
@@ -104,10 +122,14 @@ function initDiff(sequelize) {
     modelName: 'Diff',
     tableName: 'diffs',
     timestamps: true,
-    indexes: [{ fields: ['ownerId'] }, { fields: ['author'] }],
+    indexes: [
+      { fields: ['ownerId'] },
+      { fields: ['author'] },
+      { unique: true, fields: ['slug'] },
+    ],
   });
 
   return Diff;
 }
 
-module.exports = { Diff, initDiff, MAX_TITLE, MAX_CONTENT };
+module.exports = { Diff, initDiff, MAX_TITLE, MAX_CONTENT, MAX_SLUG };

@@ -15,6 +15,7 @@
  *   - SQL-инъекция в строке запроса;
  *   - неверный Content-Type, тело сверх лимита;
  *   - блокировка аккаунта после 5 неудачных входов;
+ *   - невалидный и занятый slug, сортировка вне белого списка;
  *   - срабатывание rate limiting (429) — проверяется последним.
  *
  * ВАЖНО. Прогон делает больше обращений к /auth/*, чем позволяет штатный
@@ -188,6 +189,79 @@ async function main() {
 
   record('GET /api/diffs/:id/patch — 200 text/plain',
     200, (await call('GET', `/api/diffs/${diffId}/patch`)).status);
+
+  // ── 8a. Уникальное поле slug и дополнительные эндпоинты (КР №1) ───────────
+  const withSlug = await call('POST', '/api/diffs', {
+    token: userToken,
+    body: {
+      title: 'Миграция схемы БД',
+      slug: `migration-${Date.now().toString(36)}`,
+      fileA: { name: 'v1.sql', content: 'SELECT 1;' },
+      fileB: { name: 'v2.sql', content: 'SELECT 2;\nSELECT 3;' },
+    },
+  });
+  record('POST /api/diffs со своим slug — 201', 201, withSlug.status, withSlug.body?.slug);
+
+  record('GET /api/diffs/slug/:slug — 200 (поиск по уникальному полю)',
+    200, (await call('GET', `/api/diffs/slug/${withSlug.body?.slug}`)).status);
+  record('GET /api/diffs/slug/несуществующий — 404',
+    404, (await call('GET', '/api/diffs/slug/net-takogo-sravneniya')).status);
+
+  const dupSlug = await call('POST', '/api/diffs', {
+    token: userToken,
+    body: {
+      title: 'Дубликат slug',
+      slug: withSlug.body?.slug,
+      fileA: { name: 'a', content: '1' },
+      fileB: { name: 'b', content: '2' },
+    },
+  });
+  record('POST с занятым slug — 201, но slug получает суффикс (уникальность)',
+    true, dupSlug.status === 201 && dupSlug.body?.slug !== withSlug.body?.slug,
+    `${withSlug.body?.slug} -> ${dupSlug.body?.slug}`);
+
+  const badSlug = await call('POST', '/api/diffs', {
+    token: userToken,
+    body: {
+      title: 'Плохой slug',
+      slug: 'Плохой Slug!',
+      fileA: { name: 'a', content: '1' },
+      fileB: { name: 'b', content: '2' },
+    },
+  });
+  record('POST с невалидным slug — 400 (валидация формата)', 400, badSlug.status);
+
+  const titleSuffix = Date.now().toString(36);
+  const autoSlug = await call('POST', '/api/diffs', {
+    token: userToken,
+    body: {
+      title: `Автоматический slug из заголовка ${titleSuffix}`,
+      fileA: { name: 'a', content: '1' },
+      fileB: { name: 'b', content: '2' },
+    },
+  });
+  record('POST без slug — сервер генерирует его из title',
+    `avtomaticheskiy-slug-iz-zagolovka-${titleSuffix}`, autoSlug.body?.slug);
+
+  const sorted = await call('GET', '/api/diffs?sort=-similarity&limit=5');
+  record('GET /api/diffs?sort=-similarity — 200 (сортировка)', 200, sorted.status);
+  record('Сортировка по убыванию схожести соблюдена', true,
+    sorted.body?.items?.every((item, index, all) => index === 0
+      || all[index - 1].stats.similarity >= item.stats.similarity));
+  record('GET /api/diffs?sort=passwordHash — 400 (белый список сортировок)',
+    400, (await call('GET', '/api/diffs?sort=passwordHash')).status);
+
+  const stats = await call('GET', '/api/diffs/stats');
+  record('GET /api/diffs/stats — 200 (подсчёт статистики)', 200, stats.status,
+    `записей: ${stats.body?.totalDiffs}, авторов: ${stats.body?.uniqueAuthors}`);
+  record('В статистике есть агрегаты и топ авторов', true,
+    typeof stats.body?.linesAdded === 'number'
+    && typeof stats.body?.netLineChange === 'number'
+    && Array.isArray(stats.body?.topAuthors));
+  record('GET /api/diffs/stats?author=... — 200 (фильтр статистики)',
+    200, (await call('GET', `/api/diffs/stats?author=${encodeURIComponent(userEmail)}`)).status);
+  record('GET /api/diffs/stats?unknown=1 — 400 (валидация query)',
+    400, (await call('GET', '/api/diffs/stats?unknown=1')).status);
 
   record('GET /api/diffs/не-UUID — 400 (валидация params)',
     400, (await call('GET', '/api/diffs/123')).status);

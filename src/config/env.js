@@ -58,6 +58,7 @@ const config = {
   nodeEnv,
   isProduction,
   port: num('PORT', 3000),
+  trustedProxies: list('TRUSTED_PROXIES', []),
 
   db: {
     url: process.env.DATABASE_URL && process.env.DATABASE_URL.trim() !== ''
