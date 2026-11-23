@@ -1,23 +1,48 @@
 {
   "name": "diff-service-api",
-  "version": "1.0.0",
-  "description": "REST API сервиса сравнения файлов (diff-инструмент) с визуализацией изменений",
+  "version": "2.0.0",
+  "description": "REST API сервиса сравнения файлов (diff-инструмент): JWT-аутентификация, ролевая модель, валидация и защита от уязвимостей OWASP Top 10",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js"
+    "dev": "nodemon server.js",
+    "db:create": "node scripts/createDatabase.js",
+    "security:check": "npm audit --omit=dev",
+    "smoke": "node scripts/smokeTest.js"
   },
   "keywords": [
     "express",
     "rest-api",
-    "diff"
+    "diff",
+    "jwt",
+    "security",
+    "owasp",
+    "sequelize",
+    "postgresql"
   ],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "express": "^4.19.2"
+    "bcrypt": "^6.0.0",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "dotenv": "^16.4.7",
+    "express": "^4.19.2",
+    "express-rate-limit": "^8.7.1",
+    "helmet": "^8.3.0",
+    "joi": "^18.2.9",
+    "jsonwebtoken": "^9.0.3",
+    "pg": "^8.23.1",
+    "pg-hstore": "^2.3.4",
+    "sanitize-html": "^2.13.1",
+    "sequelize": "^6.37.8",
+    "winston": "^3.19.0",
+    "winston-daily-rotate-file": "^5.0.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }

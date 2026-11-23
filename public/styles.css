@@ -1,0 +1,78 @@
+:root {
+  --bg: #f5f6f8;
+  --panel: #ffffff;
+  --border: #d8dce3;
+  --text: #1f2328;
+  --muted: #656d76;
+  --add-bg: #e6ffec;
+  --add-mark: #1a7f37;
+  --del-bg: #ffebe9;
+  --del-mark: #cf222e;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; padding: 24px;
+  font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg); color: var(--text);
+}
+h1 { font-size: 20px; margin: 0 0 4px; }
+p.sub { margin: 0 0 20px; color: var(--muted); font-size: 14px; }
+.layout { display: grid; grid-template-columns: 320px 1fr; gap: 20px; align-items: start; }
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+.panel + .panel { margin-top: 20px; }
+.panel h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 12px; }
+ul#list { list-style: none; margin: 0; padding: 0; }
+ul#list li { padding: 10px; border-radius: 6px; cursor: pointer; border: 1px solid transparent; }
+ul#list li:hover { background: #f0f2f5; }
+ul#list li.active { background: #ddf4ff; border-color: #54aeff; }
+ul#list .title { font-weight: 600; font-size: 14px; }
+ul#list .meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.badges span { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 12px; margin-right: 6px; }
+.badges-row { margin-top: 6px; }
+.b-add { background: var(--add-bg); color: var(--add-mark); }
+.b-del { background: var(--del-bg); color: var(--del-mark); }
+.b-eq  { background: #eef1f4; color: var(--muted); }
+table.diff { width: 100%; border-collapse: collapse; font-family: Consolas, "Courier New", monospace; font-size: 13px; margin-top: 12px; }
+table.diff td { padding: 1px 8px; white-space: pre-wrap; word-break: break-word; vertical-align: top; }
+td.num { width: 44px; text-align: right; color: var(--muted); user-select: none; background: #fafbfc; border-right: 1px solid var(--border); }
+td.mark { width: 18px; text-align: center; user-select: none; }
+tr.added td { background: var(--add-bg); }
+tr.added td.mark { color: var(--add-mark); }
+tr.removed td { background: var(--del-bg); }
+tr.removed td.mark { color: var(--del-mark); }
+.files { font-size: 13px; color: var(--muted); margin-top: 8px; }
+form label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+form input, form textarea { width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; font-family: inherit; }
+form textarea { font-family: Consolas, monospace; min-height: 70px; resize: vertical; }
+button { margin-top: 12px; padding: 8px 14px; border: 0; border-radius: 6px; background: #1f6feb; color: #fff; font-size: 13px; cursor: pointer; }
+button.danger { background: #cf222e; }
+button.secondary { background: #57606a; }
+button:hover { opacity: .9; }
+.row { display: flex; gap: 8px; align-items: center; }
+.err { color: var(--del-mark); font-size: 13px; margin-top: 8px; }
+.patch { background: #f6f8fa; padding: 12px; border-radius: 6px; overflow: auto; }
+[hidden] { display: none !important; }
+
+/* ── Панель аутентификации (добавлено в текущей работе) ───────────────────── */
+.topbar {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 24px; flex-wrap: wrap; margin-bottom: 20px;
+}
+.auth-box { min-width: 280px; }
+.auth-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.auth-form input { width: auto; min-width: 150px; }
+.auth-form button { margin-top: 0; }
+.auth-user { display: flex; gap: 10px; align-items: center; font-size: 14px; }
+.auth-user button { margin-top: 0; }
+.role-chip {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
+  padding: 3px 9px; border-radius: 12px; background: #eef1f4; color: var(--muted);
+}
+.role-chip[data-role="moderator"] { background: #fff4e0; color: #9a6700; }
+.role-chip[data-role="admin"] { background: var(--del-bg); color: var(--del-mark); }
+.hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+.tag {
+  font-size: 11px; font-weight: 400; text-transform: none; letter-spacing: 0;
+  color: var(--muted); background: #eef1f4; padding: 2px 7px; border-radius: 10px;
+  margin-left: 6px;
+}
