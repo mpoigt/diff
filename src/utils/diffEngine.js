@@ -1,6 +1,6 @@
 'use strict';
 
-
+const DIFF_ALGORITHM_VERSION = 2;
 
 function splitLines(text) {
   if (text === '') return [];
@@ -24,19 +24,23 @@ function buildLcsMatrix(a, b) {
 /**
  * @param {string} oldText исходный текст (файл A)
  * @param {string} newText изменённый текст (файл B)
+ * @param {{ignoreTrailingWhitespace?: boolean}} options
  * @returns {{changes: Array, stats: Object}}
  */
-function computeDiff(oldText, newText) {
+function computeDiff(oldText, newText, { ignoreTrailingWhitespace = true } = {}) {
   const a = splitLines(oldText);
   const b = splitLines(newText);
-  const lcs = buildLcsMatrix(a, b);
+  const stripTrailingWhitespace = (line) => line.replace(/[ \t]+$/, '');
+  const left = ignoreTrailingWhitespace ? a.map(stripTrailingWhitespace) : a;
+  const right = ignoreTrailingWhitespace ? b.map(stripTrailingWhitespace) : b;
+  const lcs = buildLcsMatrix(left, right);
 
   const changes = [];
   let i = 0;
   let j = 0;
 
   while (i < a.length && j < b.length) {
-    if (a[i] === b[j]) {
+    if (left[i] === right[j]) {
       changes.push({ type: 'equal', oldLine: i + 1, newLine: j + 1, content: a[i] });
       i += 1;
       j += 1;
@@ -74,6 +78,11 @@ function computeDiff(oldText, newText) {
   return { changes, stats };
 }
 
+function computeStoredDiff(oldText, newText) {
+  const { changes, stats } = computeDiff(oldText, newText);
+  return { changes, stats: { ...stats, algorithmVersion: DIFF_ALGORITHM_VERSION } };
+}
+
 /**
  * Текстовое представление diff в стиле unified (для GET /diffs/:id/patch).
  */
@@ -92,4 +101,4 @@ function toUnifiedText(diff) {
   return header.concat(body).join('\n');
 }
 
-module.exports = { computeDiff, toUnifiedText, splitLines };
+module.exports = { computeDiff, computeStoredDiff, DIFF_ALGORITHM_VERSION, toUnifiedText, splitLines };

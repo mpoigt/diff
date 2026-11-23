@@ -17,6 +17,11 @@ const MAX_TITLE = 120;
 const MAX_CONTENT = 100 * 1024; // 100 КБ на файл
 
 class Diff extends Model {
+  toStatsJSON() {
+    const { algorithmVersion, ...stats } = this.stats;
+    return stats;
+  }
+
   /** Представление для API: вложенные объекты fileA/fileB вместо плоских колонок. */
   toApiJSON({ includeChanges = true } = {}) {
     const body = {
@@ -27,7 +32,7 @@ class Diff extends Model {
       ownerId: this.ownerId,
       fileA: { name: this.fileAName, content: this.fileAContent },
       fileB: { name: this.fileBName, content: this.fileBContent },
-      stats: this.stats,
+      stats: this.toStatsJSON(),
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
     };
@@ -45,7 +50,7 @@ class Diff extends Model {
       ownerId: this.ownerId,
       fileA: { name: this.fileAName },
       fileB: { name: this.fileBName },
-      stats: this.stats,
+      stats: this.toStatsJSON(),
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
     };

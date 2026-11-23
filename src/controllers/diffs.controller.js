@@ -24,7 +24,7 @@
 const { Op, fn, col, cast, literal } = require('sequelize');
 const ApiError = require('../middleware/ApiError');
 const { Diff } = require('../models/diff.model');
-const { computeDiff, toUnifiedText } = require('../utils/diffEngine');
+const { computeDiff, computeStoredDiff, toUnifiedText } = require('../utils/diffEngine');
 const { uniqueSlug } = require('../utils/slug');
 const { logger } = require('../utils/logger');
 
@@ -216,7 +216,9 @@ async function getPatch(req, res, next) {
     // это как текст и не попытается исполнить содержимое как HTML/JS
     res.type('text/plain; charset=utf-8');
     res.set('Content-Disposition', 'inline; filename="diff.patch"');
-    return res.status(200).send(toUnifiedText(diff.toApiJSON()));
+    const { fileA, fileB } = diff.toApiJSON({ includeChanges: false });
+    const { changes } = computeDiff(fileA.content, fileB.content, { ignoreTrailingWhitespace: false });
+    return res.status(200).send(toUnifiedText({ fileA, fileB, changes }));
   } catch (error) {
     return next(error);
   }
@@ -228,7 +230,7 @@ async function getPatch(req, res, next) {
 async function create(req, res, next) {
   try {
     const { title, slug, fileA, fileB } = req.body;
-    const { changes, stats } = computeDiff(fileA.content, fileB.content);
+    const { changes, stats } = computeStoredDiff(fileA.content, fileB.content);
 
     // slug либо прислан клиентом (уже проверен по формату), либо строится
     // из заголовка; в обоих случаях проверяется на занятость
@@ -266,7 +268,7 @@ async function replace(req, res, next) {
     // Запись уже загружена и проверена на владение в ownerOrRole
     const diff = req.resource;
     const { title, slug, fileA, fileB } = req.body;
-    const { changes, stats } = computeDiff(fileA.content, fileB.content);
+    const { changes, stats } = computeStoredDiff(fileA.content, fileB.content);
 
     // PUT — полная замена: если slug не прислан, пересобираем его из нового
     // заголовка. Себя самого в конфликтах не учитываем (excludeId)
@@ -317,7 +319,7 @@ async function patch(req, res, next) {
     if (fileA !== undefined || fileB !== undefined) {
       const contentA = updates.fileAContent !== undefined ? updates.fileAContent : diff.fileAContent;
       const contentB = updates.fileBContent !== undefined ? updates.fileBContent : diff.fileBContent;
-      const { changes, stats } = computeDiff(contentA, contentB);
+      const { changes, stats } = computeStoredDiff(contentA, contentB);
       updates.changes = changes;
       updates.stats = stats;
     }

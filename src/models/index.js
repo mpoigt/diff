@@ -1,5 +1,7 @@
 'use strict';
 
+const { Op, literal } = require('sequelize');
+
 /**
  * Регистрация моделей, связей и первичное наполнение БД.
  */
@@ -9,7 +11,7 @@ const { User, initUser, ROLES, ROLE_LEVEL } = require('./user.model');
 const { Diff, initDiff, MAX_TITLE, MAX_CONTENT } = require('./diff.model');
 const { Session, initSession } = require('./session.model');
 const { AuditLog, initAuditLog } = require('./auditLog.model');
-const { computeDiff } = require('../utils/diffEngine');
+const { computeStoredDiff, DIFF_ALGORITHM_VERSION } = require('../utils/diffEngine');
 const { slugify } = require('../utils/slug');
 const { hashPassword } = require('../utils/password');
 const { logger } = require('../utils/logger');
@@ -92,7 +94,7 @@ async function seedDiffs() {
   ];
 
   for (const sample of samples) {
-    const { changes, stats } = computeDiff(sample.fileAContent, sample.fileBContent);
+    const { changes, stats } = computeStoredDiff(sample.fileAContent, sample.fileBContent);
     // slug у демо-записей строится из заголовка — тем же способом,
     // что и в контроллере при создании через API
     // eslint-disable-next-line no-await-in-loop
@@ -103,9 +105,41 @@ async function seedDiffs() {
   logger.info('Добавлены демонстрационные сравнения');
 }
 
+/** Пересчитывает старые результаты, сохраняя содержимое файлов и дату записи. */
+async function refreshStoredDiffs() {
+  const stale = literal(`"stats"->>'algorithmVersion' IS DISTINCT FROM '${DIFF_ALGORITHM_VERSION}'`);
+  const hasTrailingWhitespace = /[ \t]+(?:\r?\n|$)/;
+  let lastId;
+  let updated = 0;
+
+  for (;;) {
+    const rows = await Diff.findAll({
+      attributes: ['id', 'fileAContent', 'fileBContent', 'stats'],
+      where: { ...(lastId ? { id: { [Op.gt]: lastId } } : {}), [Op.and]: [stale] },
+      order: [['id', 'ASC']],
+      limit: 50,
+      raw: true,
+    });
+    if (rows.length === 0) break;
+
+    for (const { id, fileAContent, fileBContent, stats } of rows) {
+      const derived = hasTrailingWhitespace.test(fileAContent) || hasTrailingWhitespace.test(fileBContent)
+        ? computeStoredDiff(fileAContent, fileBContent)
+        : { stats: { ...stats, algorithmVersion: DIFF_ALGORITHM_VERSION } };
+      const [count] = await Diff.update(derived, {
+        where: { id, fileAContent, fileBContent, [Op.and]: [stale] },
+        silent: true,
+      });
+      updated += count;
+    }
+    lastId = rows.at(-1).id;
+  }
+
+  if (updated > 0) logger.info('Обновлены результаты сохранённых сравнений', { updated });
+}
+
 /** Чистка просроченных/отозванных сессий — вызывается на старте. */
 async function cleanupSessions() {
-  const { Op } = require('sequelize');
   const removed = await Session.destroy({
     where: { expiresAt: { [Op.lt]: new Date() } },
   });
@@ -114,6 +148,7 @@ async function cleanupSessions() {
 
 async function bootstrap() {
   await sync();
+  await refreshStoredDiffs();
   await ensureAdmin();
   await seedDiffs();
   await cleanupSessions();
