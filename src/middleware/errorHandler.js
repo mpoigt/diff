@@ -27,6 +27,7 @@ const { ValidationError, UniqueConstraintError, DatabaseError } = require('seque
 const ApiError = require('./ApiError');
 const config = require('../config/env');
 const { logger, errorLogger, clientIp } = require('../utils/logger');
+const { reportError } = require('../services/telemetry');
 
 /** Приведение ошибок Sequelize к ApiError с понятным текстом. */
 function normalize(err) {
@@ -90,8 +91,10 @@ function errorHandler(err, req, res, next) {
       stack: err.stack,
       sql: err.sql,
     };
-    logger.error(`Необработанная ошибка: ${err.message}`, payload);
-    errorLogger.error(`Необработанная ошибка: ${err.message}`, payload);
+    reportError(err, { source: 'express', requestId });
+    const logDetails = config.isProduction ? { requestId, method: req.method, status } : payload;
+    logger.error('Необработанная ошибка', logDetails);
+    errorLogger.error('Необработанная ошибка', logDetails);
   }
 
   const body = { error: error.message };

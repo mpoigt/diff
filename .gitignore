@@ -5,3 +5,6 @@ npm-debug.log*
 
 logs/
 *.log
+client/dist/
+client/.env.local
+client/.env.*.local
